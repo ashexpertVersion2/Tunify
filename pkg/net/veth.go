@@ -1,6 +1,7 @@
 package net
 
 import (
+	"fmt"
 	"net"
 
 	"github.com/vishvananda/netlink"
@@ -29,15 +30,34 @@ func CreateVethPair(peerNs netns.NsHandle, subnet net.IPNet) (netlink.Link, netl
 		return nil, nil, err
 	}
 
+	err = netlink.LinkSetNsFd(peerLink, int(peerNs))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	originalNs, err := EnterNetworkNs(peerNs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	broadcast := net.IP(make([]byte, 4))
+	for i := range broadcast {
+		tempByte := []byte(subnet.Mask)[i]
+		broadcast[i] = subnet.IP.To4()[i] | ^tempByte
+	}
+
 	// assign the last ip in the subnet to peer
+	ipNet := netlink.NewIPNet(broadcast.To4())
+	ipNet.Mask = subnet.Mask
 	err = netlink.AddrAdd(peerLink, &netlink.Addr{
-		IPNet: netlink.NewIPNet(net.IP(subnet.Mask)),
+		IPNet: ipNet,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
 
-	err = netlink.LinkSetNsFd(peerLink, int(peerNs))
+	_, err = EnterNetworkNs(*originalNs)
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -48,8 +68,10 @@ func CreateVethPair(peerNs netns.NsHandle, subnet net.IPNet) (netlink.Link, netl
 	}
 
 	// assign the first ip in subnet to veth
+	ipNet = netlink.NewIPNet(subnet.IP.To4())
+	ipNet.Mask = subnet.Mask
 	err = netlink.AddrAdd(vethLink, &netlink.Addr{
-		IPNet: netlink.NewIPNet(net.IP(subnet.IP)),
+		IPNet: ipNet,
 	})
 	if err != nil {
 		return nil, nil, err
@@ -63,7 +85,7 @@ func CreateVethPair(peerNs netns.NsHandle, subnet net.IPNet) (netlink.Link, netl
 	return vethLink, peerLink, nil
 }
 
-func CreateRtable(peerNs netns.NsHandle) error {
+func CreateRtable(peerNs netns.NsHandle, gateway net.IP, link netlink.Link) error {
 	// going into namespace
 	originalNs, err := EnterNetworkNs(peerNs)
 	if err != nil {
@@ -71,28 +93,38 @@ func CreateRtable(peerNs netns.NsHandle) error {
 	}
 	peerLink, err := netlink.LinkByName(peerName)
 	if err != nil {
-		return err
+		return fmt.Errorf("can not do ip link list:%v", err)
 	}
 
 	err = netlink.LinkSetUp(peerLink)
 	if err != nil {
-		return err
+		return fmt.Errorf("can not do ip link set up:%v", err)
 	}
 
 	_, defaultNetMast, _ := net.ParseCIDR("0.0.0.0/0")
 	route := &netlink.Route{
 		LinkIndex: peerLink.Attrs().Index,
 		Dst:       defaultNetMast,
-		Table:     tableID,
+		Gw:        gateway.To4(),
 	}
 	err = netlink.RouteAdd(route)
 	if err != nil {
-		return err
+		return fmt.Errorf("can not do ip r add inside ns:%v", err)
 	}
 
 	_, err = EnterNetworkNs(*originalNs)
 	if err != nil {
-		return err
+		return fmt.Errorf("can not do ip net exec:%v", err)
+	}
+
+	route = &netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       defaultNetMast,
+		Table:     tableID,
+	}
+	err = netlink.RouteAdd(route)
+	if err != nil {
+		return fmt.Errorf("can not do ip r add outside ns:%v", err)
 	}
 
 	rule := netlink.NewRule()
@@ -100,7 +132,7 @@ func CreateRtable(peerNs netns.NsHandle) error {
 	rule.Table = tableID
 	err = netlink.RuleAdd(rule)
 	if err != nil {
-		return err
+		return fmt.Errorf("can not do ip rule add:%v", err)
 	}
 	return nil
 }

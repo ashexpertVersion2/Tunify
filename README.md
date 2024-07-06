@@ -11,3 +11,9 @@ make tunify
 
 ```bash
 ./bin/tunify <interface_name(wlo1, eth0 or ...)> <application>
+```
+## Limitations
+- `"net.ipv4.ip_forward"` must be enabled.
+- Program must have root access or `CAP_NET` to alter iptable rules and create veth.
+- `socat` must be installed.
+
