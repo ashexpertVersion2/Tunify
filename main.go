@@ -3,9 +3,10 @@ package main
 import (
 	// "fmt"
 	"log"
+	"net"
 	"os"
 
-	"tunify/pkg/net"
+	tunet "tunify/pkg/net"
 	"tunify/pkg/proc"
 
 	"github.com/vishvananda/netlink"
@@ -16,8 +17,15 @@ import (
 // create rtable
 // create nat rules
 func main() {
-	if len(os.Args) != 3 {
-		log.Fatalln("Usage: tunify <link_name> <executable>")
+	if len(os.Args) != 3 && len(os.Args) != 4 {
+		log.Fatalln("Usage: tunify <link_name> <executable> <gateway>")
+	}
+	var gateway net.IP
+	if len(os.Args) == 4 {
+		gateway = net.ParseIP(os.Args[3])
+		if gateway == nil {
+			log.Fatalln("inavlid gateway")
+		}
 	}
 	linkName := os.Args[1]
 	link, err := netlink.LinkByName(linkName)
@@ -25,27 +33,27 @@ func main() {
 		log.Fatalf("%s is not a valid link name: %s\n", linkName, err)
 	}
 
-	subnet, err := net.FindFreeSubnet()
+	subnet, err := tunet.FindFreeSubnet()
 	if err != nil {
 		log.Fatalf("could allocate subnet: %v\n", err)
 	}
 
-	ns, err := net.CreateNetworkNs()
+	ns, err := tunet.CreateNetworkNs()
 	if err != nil {
 		log.Fatalf("could not create namespace: %v\n", err)
 	}
 
-	_, _, err = net.CreateVethPair(*ns, *subnet)
+	_, _, err = tunet.CreateVethPair(*ns, *subnet)
 	if err != nil {
 		log.Fatalf("could not create veth: %v\n", err)
 	}
 
-	err = net.CreateRtable(*ns, subnet.IP, link)
+	err = tunet.CreateRtable(*ns, subnet.IP, link, gateway)
 	if err != nil {
 		log.Fatalf("could not create routing table: %v\n", err)
 	}
 
-	err = net.AddMasqurade(*subnet, linkName)
+	err = tunet.AddMasqurade(*subnet, linkName)
 	if err != nil {
 		log.Fatalf("could not add iptable nat rule: %v\n", err)
 	}
@@ -56,12 +64,17 @@ func main() {
 	}
 
 	log.Default().Printf("executable: %s\n", os.Args[2])
-	net.EnterNetworkNs(*ns)
+	tunet.EnterNetworkNs(*ns)
 
-	// port mapping outside ns
+	// port mapping inside ns
 	unix53Process, err := proc.ExecSC(53, "127.0.0.53", "UNIX", "UDP")
 	if err != nil {
 		log.Fatalf("could not run socat: %v\n", err)
+	}
+	err = tunet.SetLOUp()
+
+	if err != nil {
+		log.Fatalf("could not set loopback on: %v\n", err)
 	}
 
 	// forking and waiting
