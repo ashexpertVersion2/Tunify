@@ -148,3 +148,26 @@ func SetLOUp() error {
 	}
 	return nil
 }
+
+func CleanUpRule(link netlink.Link) error {
+	_, defaultNetMast, _ := net.ParseCIDR("0.0.0.0/0")
+
+	route := &netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       defaultNetMast,
+		Table:     tableID,
+	}
+	err := netlink.RouteDel(route)
+	if err != nil {
+		return fmt.Errorf("can not do ip r del outside ns:%v", err)
+	}
+
+	rule := netlink.NewRule()
+	rule.IifName = vethName
+	rule.Table = tableID
+	err = netlink.RuleDel(rule)
+	if err != nil {
+		return fmt.Errorf("can not do ip rule del:%v", err)
+	}
+	return nil
+}

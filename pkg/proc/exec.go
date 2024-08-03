@@ -56,6 +56,7 @@ func ExecSC(port int, remoteIP, inType, outType string) (*os.Process, error) {
 
 	return Exec("socat", []string{
 		"socat",
+		"-T5",
 		scSource,
 		scSink,
 	})

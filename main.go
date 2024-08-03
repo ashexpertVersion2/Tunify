@@ -10,6 +10,7 @@ import (
 	"tunify/pkg/proc"
 
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netns"
 )
 
 // create new namespace
@@ -37,10 +38,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("could allocate subnet: %v\n", err)
 	}
-
 	ns, err := tunet.CreateNetworkNs()
 	if err != nil {
 		log.Fatalf("could not create namespace: %v\n", err)
+	}
+
+	mainNs, err := netns.Get()
+	if err != nil {
+		log.Fatalf("could not open namespace file: %v\n", err)
 	}
 
 	_, _, err = tunet.CreateVethPair(*ns, *subnet)
@@ -83,5 +88,8 @@ func main() {
 	process.Wait()
 	udp53Process.Kill()
 	unix53Process.Kill()
+	netns.Set(mainNs)
+	tunet.CleanUpMasqurade(*subnet, linkName)
+	tunet.CleanUpRule(link)
 	log.Default().Println("Done!")
 }

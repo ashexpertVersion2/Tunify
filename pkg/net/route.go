@@ -46,7 +46,17 @@ func AddMasqurade(subnet net.IPNet, device string) error {
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("Error executing iptables command: %w , output was: %s", err, output)
+		return fmt.Errorf("error executing iptables command: %w , output was: %s", err, output)
+	}
+	return nil
+}
+
+func CleanUpMasqurade(subnet net.IPNet, device string) error {
+	cmd := exec.Command("iptables", "-t", "nat", "-D", "POSTROUTING", "-o", device, "-s", subnet.String(), "-j", "MASQUERADE")
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("error executing iptables command: %w , output was: %s", err, output)
 	}
 	return nil
 }
