@@ -86,6 +86,27 @@ func CreateVethPair(peerNs netns.NsHandle, subnet net.IPNet) (netlink.Link, netl
 }
 
 func CreateRtable(peerNs netns.NsHandle, innerGateway net.IP, link netlink.Link, outerGateway net.IP) error {
+	_, defaultNetMast, _ := net.ParseCIDR("0.0.0.0/0")
+
+	route := &netlink.Route{
+		LinkIndex: link.Attrs().Index,
+		Dst:       defaultNetMast,
+		Gw:        outerGateway.To4(),
+		Table:     tableID,
+	}
+	err := netlink.RouteAdd(route)
+	if err != nil {
+		return fmt.Errorf("can not do ip r add outside ns:%v", err)
+	}
+
+	rule := netlink.NewRule()
+	rule.IifName = vethName
+	rule.Table = tableID
+	err = netlink.RuleAdd(rule)
+	if err != nil {
+		return fmt.Errorf("can not do ip rule add:%v", err)
+	}
+
 	// going into namespace
 	originalNs, err := EnterNetworkNs(peerNs)
 	if err != nil {
@@ -101,8 +122,7 @@ func CreateRtable(peerNs netns.NsHandle, innerGateway net.IP, link netlink.Link,
 		return fmt.Errorf("can not do ip link set up:%v", err)
 	}
 
-	_, defaultNetMast, _ := net.ParseCIDR("0.0.0.0/0")
-	route := &netlink.Route{
+	route = &netlink.Route{
 		LinkIndex: peerLink.Attrs().Index,
 		Dst:       defaultNetMast,
 		Gw:        innerGateway.To4(),
@@ -113,28 +133,7 @@ func CreateRtable(peerNs netns.NsHandle, innerGateway net.IP, link netlink.Link,
 	}
 
 	_, err = EnterNetworkNs(*originalNs)
-	if err != nil {
-		return fmt.Errorf("can not do ip net exec:%v", err)
-	}
 
-	route = &netlink.Route{
-		LinkIndex: link.Attrs().Index,
-		Dst:       defaultNetMast,
-		Gw:        outerGateway.To4(),
-		Table:     tableID,
-	}
-	err = netlink.RouteAdd(route)
-	if err != nil {
-		return fmt.Errorf("can not do ip r add outside ns:%v", err)
-	}
-
-	rule := netlink.NewRule()
-	rule.IifName = vethName
-	rule.Table = tableID
-	err = netlink.RuleAdd(rule)
-	if err != nil {
-		return fmt.Errorf("can not do ip rule add:%v", err)
-	}
 	return nil
 }
 

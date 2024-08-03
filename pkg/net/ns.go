@@ -25,10 +25,12 @@ func EnterNetworkNs(newNs netns.NsHandle) (*netns.NsHandle, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	err = netns.Set(newNs)
 	if err != nil {
 		return nil, err
 	}
+
 	return &oldns, nil
 
 }

@@ -39,7 +39,7 @@ func ExecSC(port int, remoteIP, inType, outType string) (*os.Process, error) {
 	var scSource, scSink string
 
 	if inType == "UDP" {
-		scSource = fmt.Sprintf("UDP-LISTEN:%d,reuseaddr,fork", port)
+		scSource = fmt.Sprintf("UDP-LISTEN:%d,bind=%s,reuseaddr,fork", port, remoteIP)
 	} else if inType == "UNIX" {
 		scSource = fmt.Sprintf("UNIX-LISTEN:%s%d,unlink-early,fork", unixSocketFile, port)
 	} else {

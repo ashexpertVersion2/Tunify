@@ -58,7 +58,7 @@ func main() {
 		log.Fatalf("could not add iptable nat rule: %v\n", err)
 	}
 	// port mapping outside ns
-	udp53Process, err := proc.ExecSC(53, "", "UDP", "UNIX")
+	udp53Process, err := proc.ExecSC(53, "127.0.0.53", "UNIX", "UDP")
 	if err != nil {
 		log.Fatalf("could not run socat: %v\n", err)
 	}
@@ -66,17 +66,15 @@ func main() {
 	log.Default().Printf("executable: %s\n", os.Args[2])
 	tunet.EnterNetworkNs(*ns)
 
-	// port mapping inside ns
-	unix53Process, err := proc.ExecSC(53, "127.0.0.53", "UNIX", "UDP")
-	if err != nil {
-		log.Fatalf("could not run socat: %v\n", err)
-	}
 	err = tunet.SetLOUp()
-
 	if err != nil {
 		log.Fatalf("could not set loopback on: %v\n", err)
 	}
-
+	// port mapping inside ns
+	unix53Process, err := proc.ExecSC(53, "127.0.0.53", "UDP", "UNIX")
+	if err != nil {
+		log.Fatalf("could not run socat: %v\n", err)
+	}
 	// forking and waiting
 	process, err := proc.Exec(os.Args[2], []string{})
 	if err != nil {
